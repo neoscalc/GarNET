@@ -1,4 +1,8 @@
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 import cv2
 import natsort
 
@@ -125,6 +129,135 @@ class DataSet:
 
 
 class Plotting():
+
     @staticmethod
-    def MethodComesHere():
-        pass
+    def projection(centroids: np.ndarray, scan_dim: np.ndarray, vx_cts: np.ndarray,
+                   shape_classes: np.ndarray, res_in_mm: float, shapes_of_interest: list,
+                   x: str, y: str, color_shape_classes: list, ax: plt.Axes,):
+        centroids_mm = centroids * res_in_mm
+        dim_mm = scan_dim * res_in_mm
+
+        COORD_DICT = {"X": 1, "Y": 2, "Z": 0}
+
+        x_margin = dim_mm[COORD_DICT[x]] * 0.1
+        y_margin = dim_mm[COORD_DICT[y]] * 0.1
+
+        for shape_class, color_class in zip(shapes_of_interest, color_shape_classes):
+            sns.scatterplot(x=centroids_mm[:, COORD_DICT[x]][shape_classes == shape_class], y=centroids_mm[:, COORD_DICT[y]][shape_classes == shape_class],
+                            hue=vx_cts[shape_classes == shape_class], hue_norm=(vx_cts.min(), vx_cts.max()),
+                            s=0.8*((3*res_in_mm/4*np.pi) * vx_cts[shape_classes == shape_class])**(1/3),
+                            palette=sns.color_palette("blend:"+color_class[0]+","+color_class[1], as_cmap=True),
+                            label=shape_class, ax=ax)
+
+        ax.set_xlim(0 - x_margin, dim_mm[COORD_DICT[x]] + x_margin)
+        ax.set_ylim(0 - y_margin, dim_mm[COORD_DICT[y]] + y_margin)
+
+        # ax.set_xticks(np.linspace(0, dim_mm[coord_dict[x]], 5))
+
+        ax.set_xlabel(f"{x}-coordinate [mm]")
+        ax.set_ylabel(f"{y}-coordinate [mm]")
+
+        ax.set_xticks(np.arange(0, dim_mm[COORD_DICT[x]] + 0.5, 5))
+        ax.set_yticks(np.arange(0, dim_mm[COORD_DICT[y]] + 0.5, 5))
+
+        ax.set_frame_on(False)
+        ax.set_aspect("equal")
+
+        ax.legend(bbox_to_anchor=(1.0, 0.95), frameon=False)
+
+    @staticmethod
+    def crystal_size_distribtuion(vx_cts: np.ndarray, shape_classes: np.ndarray,
+                                  res_in_mm: float, shapes_of_interest: list,
+                                  ax: plt.Axes, color_all: str, color_shape_classes: list,
+                                  log: bool = False, bins: int | None = None,):
+
+        # calculate grain radii assuming spherical grains
+        radius_vx = (((3/4)*vx_cts)/np.pi)**(1/3)
+        # convert to mm
+        radius = radius_vx * res_in_mm
+
+        if log:
+            radius = np.log10(radius)
+
+        bin_range = (np.min(radius), np.max(radius))
+
+        # set number of bins
+        if bins is None:
+            # set bin-width according to Freedman-Diaconis rule
+            iqr = np.subtract(*np.percentile(radius, [75, 25]))
+            bin_width = (2*iqr)/(len(radius)**(1/3))
+            print(bin_width)
+
+            bins = int(np.subtract(np.max(radius), np.min(radius)) / bin_width)
+
+        # plot histogram
+        sns.histplot(radius, bins=bins, ax=ax, label="total", color=color_all)
+
+        # combine different shapes into pandas dataframe
+        radii_with_shapes = pd.DataFrame({"radius": radius, "shape": shape_classes})
+
+        radii_with_shapes.loc[~radii_with_shapes["shape"].isin(shapes_of_interest), "shape"] = None
+
+        sns.histplot(radii_with_shapes, x="radius", hue="shape", multiple="dodge",
+                     bins=bins, binrange=bin_range, ax=ax, shrink=0.9, palette=color_shape_classes, legend=True)
+
+        if log:
+            ax.set_xlabel("log(grain radius) [log(mm)]")
+        else:
+            ax.set_xlabel("grain radius [mm]")
+        ax.set_ylabel("counts")
+
+    @staticmethod
+    def class_fraction_in_CSD(vx_cts: np.ndarray, shape_classes: np.ndarray,
+                              res_in_mm: float, shapes_of_interest: list,
+                              ax: plt.Axes, color_shape_classes: list,
+                              log: bool = False, bins: int | None = None):
+
+        # calculate grain radii assuming spherical grains
+        radius_vx = (((3/4)*vx_cts)/np.pi)**(1/3)
+        # convert to mm
+        radius = radius_vx * res_in_mm
+
+        if log:
+            radius = np.log10(radius)
+
+        bin_range = (np.min(radius), np.max(radius))
+
+        # set number of bins
+        if bins is None:
+            # set bin-width according to Freedman-Diaconis rule
+            iqr = np.subtract(*np.percentile(radius, [75, 25]))
+            bin_width = (2*iqr)/(len(radius)**(1/3))
+            print(bin_width)
+
+            bins = int(np.subtract(np.max(radius), np.min(radius)) / bin_width)
+
+        else:
+            bin_width = np.subtract(np.max(radius), np.min(radius)) / bins
+
+        # calcute histogram
+        hist, bin_edges = np.histogram(radius, bins=bins, range=bin_range)
+
+        shape_class_fraction = {}
+
+        for shape_class, color_class in zip(shapes_of_interest, color_shape_classes):
+            # calculate histogram
+            hist_class, _ = np.histogram(radius[shape_classes == shape_class], bins=bins, range=bin_range)
+            # calculate fraction
+            fraction = hist_class/hist
+            # plot
+            mid_bin_radius = bin_edges[:-1] + 0.5*bin_width
+            ax.plot(mid_bin_radius, fraction, c=color_class, label=shape_class, lw=2, marker="o", ms=5)
+
+            if log:
+                ax.set_xlabel("log(grain radius)")
+            else:
+                ax.set_xlabel("grain radius [mm]")
+
+            ax.set_ylabel("fraction")
+
+            ax.legend()
+
+            shape_class_fraction[shape_class] = fraction
+
+        return shape_class_fraction, mid_bin_radius
