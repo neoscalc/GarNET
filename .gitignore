@@ -5,6 +5,13 @@ Data/*
 # VS Code
 *.code-workspace
 
+# theriak files
+theriak.ini
+theriak.last
+THERIN
+OUT
+tc55_ZS2102
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
