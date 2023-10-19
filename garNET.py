@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+import keras
 import cv2
 import natsort
 
@@ -126,6 +127,22 @@ class DataSet:
         else:
             # return unsorted classes and corresponding indices
             return human_classified_classes, idx_human_classified_grains
+
+
+class Classification():
+
+    @staticmethod
+    def load_model(modelh5: str, parent_dir: str | Path = Path("saved_models"), include_rescaling_layer: bool = True):
+        model = keras.models.load_model(Path(parent_dir, modelh5))
+
+        if include_rescaling_layer:
+            inputs = keras.Input(shape=(64, 64, 3))
+            x = keras.layers.Rescaling(scale=1./255)(inputs)
+            outputs = model(x)
+
+            model = keras.Model(inputs=inputs, outputs=outputs)
+
+        return model
 
 
 class Plotting():
